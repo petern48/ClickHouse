@@ -44,7 +44,9 @@ public:
         const ColumnString::Offsets & offsets,
         ColumnString::Chars & res_data,
         ColumnString::Offsets & res_offsets,
-        size_t input_rows_count)
+        size_t input_rows_count
+        // char pattern = ' '
+        )
     {
         res_offsets.resize_exact(input_rows_count);
         res_data.reserve_exact(data.size());
@@ -57,7 +59,7 @@ public:
 
         for (size_t i = 0; i < input_rows_count; ++i)
         {
-            execute(reinterpret_cast<const UInt8 *>(&data[prev_offset]), offsets[i] - prev_offset - 1, start, length);
+            execute(reinterpret_cast<const UInt8 *>(&data[prev_offset]), offsets[i] - prev_offset - 1, /*pattern, */start, length);
 
             res_data.resize(res_data.size() + length + 1);
             memcpySmallAllowReadWriteOverflow15(&res_data[res_offset], start, length);
@@ -74,15 +76,18 @@ public:
         throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Functions trimLeft, trimRight and trimBoth cannot work with FixedString argument");
     }
 
-private:
-    static void execute(const UInt8 * data, size_t size, const UInt8 *& res_data, size_t & res_size)
+    static void execute(const UInt8 * data, size_t size, /* char pattern,*/ const UInt8 *& res_data, size_t & res_size)
     {
         const char * char_data = reinterpret_cast<const char *>(data);
         const char * char_end = char_data + size;
+        // std::string s_data(data, size);
+        // SearchSymbol search_symbol(pattern);
 
         if constexpr (Mode::trim_left)
         { // NOLINT
             const char * found = find_first_not_symbols<' '>(char_data, char_end);
+            // I found the below non-templatized function in base/base/find_symbols.h
+            // const char * found = find_first_not_symbols(s_data, search_symbol);
             size_t num_chars = found - char_data;
             char_data += num_chars;
         }
@@ -90,6 +95,8 @@ private:
         if constexpr (Mode::trim_right)
         { // NOLINT
             const char * found = find_last_not_symbols_or_null<' '>(char_data, char_end);
+            // I found the below non-templatized function in base/base/find_symbols.h
+            // const char * found = find_last_not_symbols_or_null(s_data, search_symbol);
             if (found)
                 char_end = found + 1;
             else

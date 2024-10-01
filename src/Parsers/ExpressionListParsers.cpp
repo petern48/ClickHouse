@@ -1744,6 +1744,12 @@ public:
 
                     elements.push_back(pattern_node);
                     elements.push_back(std::make_shared<ASTLiteral>(""));
+
+                    // elements.push_back();
+                    // TODO: You need to figure out how to take the second optional argument from the query
+                    // and add that as an argument for the trim function. My guess is by pushing it
+                    // as a node to the AST here. similar to elements.push_back(pattern_node);
+                    // ^this is what I think, but I done much with the parser to know for sure.
                 }
                 else
                 {
