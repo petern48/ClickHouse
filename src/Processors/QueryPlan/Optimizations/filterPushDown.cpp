@@ -619,6 +619,60 @@ static size_t tryPushDownOverJoinStep(QueryPlan::Node * parent_node, QueryPlan::
             equivalent_right_stream_column_to_left_stream_column[rhs_original_name] = lhs_column;
     }
 
+    /// For JOIN USING with different key types (e.g., left.a :: UInt32 and right.a :: UInt64),
+    /// the JOIN output casts one or both keys to a common supertype.
+    /// In this case, getJoiningKeysForJoinStep skips the key pair due to type mismatch,
+    /// leaving equivalent_expressions empty and preventing filter push-down to the right side.
+    ///
+    /// We handle two sub-cases:
+    /// 1. Left key is cast to supertype (left.a :: UInt32 → UInt64), right key is already supertype (right.a :: UInt64).
+    ///    Condition: JOIN output type for left key == right key type.
+    /// 2. Left key is already supertype (left.a :: UInt64), right key is cast to supertype (right.a :: UInt32 → UInt64).
+    ///    Condition: JOIN output type for left key == left key type (no cast on left).
+    ///
+    /// In both cases, we can push the filter to the right side by replacing the left key column name
+    /// with the right key column name. The fix_predicate_for_join_logical_step mechanism will prepend
+    /// any required CAST expressions from the join's output actions.
+    if (logical_join)
+    {
+        for (const auto & predicate : logical_join->getJoinOperator().expression)
+        {
+            auto [predicate_op, lhs, rhs] = predicate.asBinaryPredicate();
+            if (predicate_op != JoinConditionOperator::Equals && predicate_op != JoinConditionOperator::NullSafeEquals)
+                continue;
+
+            if (lhs.fromRight() && rhs.fromLeft())
+                std::swap(lhs, rhs);
+            else if (!lhs.fromLeft() || !rhs.fromRight())
+                continue;
+
+            auto lhs_column = lhs.getColumn();
+            auto rhs_column = rhs.getColumn();
+
+            /// Skip if types already match (already handled by getJoiningKeysForJoinStep above)
+            if (lhs_column.type->equals(*rhs_column.type))
+                continue;
+
+            /// Skip if already handled (e.g., by the equivalent_expressions loop above)
+            if (equivalent_left_stream_column_to_right_stream_column.contains(lhs_column.name))
+                continue;
+
+            if (!join_header->has(lhs_column.name))
+                continue;
+
+            const auto & lhs_output_type = join_header->getByName(lhs_column.name).type;
+
+            /// Sub-case 1: left key cast to supertype = right key type (CAST on left).
+            /// Sub-case 2: left key IS the supertype (no CAST on left), right key cast to it.
+            if (!lhs_output_type->equals(*rhs_column.type) && !lhs_output_type->equals(*lhs_column.type))
+                continue;
+
+            /// We can push the filter to the right side by replacing the left key column name with the right key column name.
+            /// Any required type conversions are handled by fix_predicate_for_join_logical_step.
+            equivalent_left_stream_column_to_right_stream_column[lhs_column.name] = rhs_column;
+        }
+    }
+
     Names left_stream_available_columns_to_push_down = get_available_columns_for_filter(true /*push_to_left_stream*/, left_stream_filter_push_down_input_columns_available);
     Names right_stream_available_columns_to_push_down = get_available_columns_for_filter(false /*push_to_left_stream*/, right_stream_filter_push_down_input_columns_available);
 
