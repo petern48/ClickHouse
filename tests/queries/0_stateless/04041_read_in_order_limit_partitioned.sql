@@ -59,3 +59,42 @@ SETTINGS optimize_read_in_order = 1, max_threads = 2;
 
 SYSTEM START MERGES t_read_in_order_partitioned;
 DROP TABLE t_read_in_order_partitioned;
+
+-- Use ReplacingMergeTree table to test FINAL
+DROP TABLE IF EXISTS t_read_in_order_partitioned_final;
+
+CREATE TABLE t_read_in_order_partitioned_final
+(
+    dt DateTime,
+    id UInt32,
+    ver UInt8
+)
+ENGINE = ReplacingMergeTree(ver)
+PARTITION BY toYYYYMM(dt)
+ORDER BY dt;
+
+SYSTEM STOP MERGES t_read_in_order_partitioned_final;
+
+-- January: obsolete versions (ver=1)
+INSERT INTO t_read_in_order_partitioned_final
+SELECT toDateTime('2024-01-01 00:00:00') + number * 60 AS dt,
+       number AS id,
+       toUInt8(1) AS ver
+FROM numbers(2000);
+-- February: surviving versions (ver=2)
+INSERT INTO t_read_in_order_partitioned_final
+SELECT toDateTime('2024-02-01 00:00:00') + number * 60 AS dt,
+       number AS id,
+       toUInt8(2) AS ver
+FROM numbers(2000);
+
+-- Query using FINAL
+SELECT id
+FROM t_read_in_order_partitioned_final
+FINAL
+ORDER BY dt ASC
+LIMIT 5
+SETTINGS optimize_read_in_order = 1, max_threads = 2;
+
+SYSTEM START MERGES t_read_in_order_partitioned_final;
+DROP TABLE t_read_in_order_partitioned_final;

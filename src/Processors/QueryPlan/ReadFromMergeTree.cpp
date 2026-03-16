@@ -1192,13 +1192,14 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
     /// ORDER BY key LIMIT N: trim parts from partitions that cannot contribute to the top-N
     /// when partition key is monotone in sort key (e.g. PARTITION BY toYYYYMM(dt) ORDER BY dt), conservative otherwise.
     /// Only trim at a partition boundary when the next/prev partition's sort-key bound is strictly beyond retained parts.
-    /// Only applies when there is no filtering (PREWHERE / row-level filter / filter_actions_dag) because
-    /// cumulative_rows is based on pre-filter row counts and may overestimate how many rows survive the filter.
+    /// Only applies when there is no row-level filtering (PREWHERE / row-level filter / filter_actions_dag) and no FINAL,
+    /// because cumulative_rows is based on pre-filter row counts and may overestimate how many rows survive after filters/FINAL.
     if (input_order_info->limit > 0 && !is_parallel_reading_from_replicas
         && parts_with_ranges.size() > 1
         && !query_info.prewhere_info
         && !query_info.row_level_filter
-        && !query_info.filter_actions_dag)
+        && !query_info.filter_actions_dag
+        && !query_info.isFinal())
     {
         const size_t limit = input_order_info->limit;
         const int direction = input_order_info->direction;
