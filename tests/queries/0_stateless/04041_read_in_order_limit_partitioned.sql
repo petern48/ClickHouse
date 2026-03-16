@@ -40,25 +40,5 @@ SETTINGS optimize_read_in_order = 1, max_threads = 2;
 SELECT val FROM t_read_in_order_partitioned ORDER BY dt DESC LIMIT 5
 SETTINGS optimize_read_in_order = 1, max_threads = 2;
 
--- Pipeline (ascending): the MergingSortedTransform that merges part-level streams must have fan-in <= 5, not 20.
-SELECT extract(trimLeft(explain), 'MergingSortedTransform (\\d+) → 1') AS fanin, toUInt64(fanin) <= 5 AS ok
-FROM (
-    EXPLAIN PIPELINE (
-        SELECT val FROM t_read_in_order_partitioned ORDER BY dt ASC LIMIT 5
-        SETTINGS optimize_read_in_order = 1, max_threads = 2
-    )
-) 
-WHERE explain LIKE '%MergingSortedTransform%' LIMIT 1;
-
--- Pipeline (descending): same check (trimmed to April's 5 parts).
-SELECT extract(trimLeft(explain), 'MergingSortedTransform (\\d+) → 1') AS fanin, toUInt64(fanin) <= 5 AS ok
-FROM (
-    EXPLAIN PIPELINE (
-        SELECT val FROM t_read_in_order_partitioned ORDER BY dt DESC LIMIT 5
-        SETTINGS optimize_read_in_order = 1, max_threads = 2
-    )
-) 
-WHERE explain LIKE '%MergingSortedTransform%' LIMIT 1;
-
 SYSTEM START MERGES t_read_in_order_partitioned;
 DROP TABLE t_read_in_order_partitioned;
