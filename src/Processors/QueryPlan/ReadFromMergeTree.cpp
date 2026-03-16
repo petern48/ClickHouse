@@ -54,6 +54,7 @@
 #include <Storages/MergeTree/RequestResponse.h>
 #include <Storages/Statistics/ConditionSelectivityEstimator.h>
 #include <Storages/VirtualColumnUtils.h>
+#include <Common/FieldAccurateComparison.h>
 #include <Common/JSONBuilder.h>
 #include <Common/logger_useful.h>
 #include <Common/thread_local_rng.h>
@@ -1187,6 +1188,106 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
     const auto & settings = context->getSettingsRef();
 
     LOG_TRACE(log, "Spreading ranges among streams with order");
+
+    /// ORDER BY key LIMIT N: trim parts from partitions that cannot contribute to the top-N
+    /// when partition key is monotone in sort key (e.g. PARTITION BY toYYYYMM(dt) ORDER BY dt), conservative otherwise.
+    /// Only trim at a partition boundary when the next/prev partition's sort-key bound is strictly beyond retained parts.
+    if (input_order_info->limit > 0 && !is_parallel_reading_from_replicas
+        && parts_with_ranges.size() > 1)
+    {
+        const size_t limit = input_order_info->limit;
+        const int direction = input_order_info->direction;
+
+        auto get_sort_key_mark = [](const DataPartPtr & part, bool last) -> std::optional<Field>
+        {
+            const auto index = part->getIndex();
+            if (!index || index->empty())
+                return std::nullopt;
+            const auto & col = (*index)[0];
+            if (col->empty())
+                return std::nullopt;
+            Field f;
+            col->get(last ? col->size() - 1 : 0, f);
+            return f.isNull() ? std::nullopt : std::make_optional(std::move(f));
+        };
+
+        if (direction == 1)
+        {
+            /// Ascending: trim trailing parts once we have enough rows and hit a partition boundary.
+            size_t cumulative_rows = 0;
+            std::optional<Field> max_last_mark;
+
+            for (size_t i = 0; i < parts_with_ranges.size(); ++i)
+            {
+                cumulative_rows += parts_with_ranges[i].getRowsCount();
+                if (auto last_mark = get_sort_key_mark(parts_with_ranges[i].data_part, true))
+                {
+                    if (!max_last_mark.has_value() || accurateLess(*max_last_mark, *last_mark))
+                        max_last_mark = std::move(last_mark);
+                }
+
+                if (cumulative_rows >= limit && i + 1 < parts_with_ranges.size()
+                    && max_last_mark.has_value())
+                {
+                    const auto & curr_pid = parts_with_ranges[i].data_part->info.getPartitionId();
+                    const auto & next_pid = parts_with_ranges[i + 1].data_part->info.getPartitionId();
+                    // if at partition boundary
+                    if (curr_pid != next_pid)
+                    {
+                        auto next_first = get_sort_key_mark(parts_with_ranges[i + 1].data_part, false);
+                        // if next partition strictly after retained, trim trailing parts
+                        if (next_first.has_value() && accurateLess(*max_last_mark, *next_first))
+                        {
+                            parts_with_ranges.erase(
+                                parts_with_ranges.begin() + static_cast<ptrdiff_t>(i + 1),
+                                parts_with_ranges.end());
+                            LOG_TRACE(log, "Trimmed to {} part(s) for ascending ORDER BY LIMIT {}",
+                                parts_with_ranges.size(), limit);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        else /// direction == -1
+        {
+            /// Descending: trim leading parts once we have enough rows and hit a partition boundary.
+            size_t cumulative_rows = 0;
+            std::optional<Field> min_first_mark;
+
+            for (size_t i = parts_with_ranges.size(); i > 0; --i)
+            {
+                const size_t idx = i - 1;
+                cumulative_rows += parts_with_ranges[idx].getRowsCount();
+                if (auto first_mark = get_sort_key_mark(parts_with_ranges[idx].data_part, false))
+                {
+                    if (!min_first_mark.has_value() || accurateLess(*first_mark, *min_first_mark))
+                        min_first_mark = std::move(first_mark);
+                }
+
+                if (cumulative_rows >= limit && idx > 0 && min_first_mark.has_value())
+                {
+                    const auto & curr_pid = parts_with_ranges[idx].data_part->info.getPartitionId();
+                    const auto & prev_pid = parts_with_ranges[idx - 1].data_part->info.getPartitionId();
+                    // if at partition boundary
+                    if (curr_pid != prev_pid)
+                    {
+                        auto prev_last = get_sort_key_mark(parts_with_ranges[idx - 1].data_part, true);
+                        // if prev partition strictly before retained, trim leading parts
+                        if (prev_last.has_value() && accurateLess(*prev_last, *min_first_mark))
+                        {
+                            parts_with_ranges.erase(
+                                parts_with_ranges.begin(),
+                                parts_with_ranges.begin() + static_cast<ptrdiff_t>(idx));
+                            LOG_TRACE(log, "Trimmed to {} part(s) for descending ORDER BY LIMIT {}",
+                                parts_with_ranges.size(), limit);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     PartRangesReadInfo info(parts_with_ranges, settings, *data_settings);
 
