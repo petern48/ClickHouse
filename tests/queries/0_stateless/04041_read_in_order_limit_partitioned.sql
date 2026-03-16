@@ -33,12 +33,29 @@ INSERT INTO t_read_in_order_partitioned SELECT toDateTime('2024-04-01 06:00:00')
 INSERT INTO t_read_in_order_partitioned SELECT toDateTime('2024-04-01 09:00:00') + number * 60, number + 3600 FROM numbers(200);
 INSERT INTO t_read_in_order_partitioned SELECT toDateTime('2024-04-01 12:00:00') + number * 60, number + 3800 FROM numbers(200);
 
--- Correctness Check: ascending order
+-- No filter, ascending order
 SELECT val FROM t_read_in_order_partitioned ORDER BY dt ASC LIMIT 5
 SETTINGS optimize_read_in_order = 1, max_threads = 2;
--- Correctness Check: descending order
+-- No filter, descending order
 SELECT val FROM t_read_in_order_partitioned ORDER BY dt DESC LIMIT 5
 SETTINGS optimize_read_in_order = 1, max_threads = 2;
+
+-- Query with WHERE filter that returns a value in the last part
+SELECT val
+FROM t_read_in_order_partitioned
+WHERE val = 3800
+ORDER BY dt ASC
+LIMIT 1
+SETTINGS optimize_read_in_order = 1, max_threads = 2;
+
+-- Query with PREWHERE filter that returns a value in the last part
+SELECT val
+FROM t_read_in_order_partitioned
+PREWHERE val = 3800
+ORDER BY dt ASC
+LIMIT 1
+SETTINGS optimize_read_in_order = 1, max_threads = 2;
+
 
 SYSTEM START MERGES t_read_in_order_partitioned;
 DROP TABLE t_read_in_order_partitioned;
