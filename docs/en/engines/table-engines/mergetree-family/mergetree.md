@@ -474,7 +474,15 @@ ngrambf_v1(n, size_of_bloom_filter_in_bytes, number_of_hash_functions, random_se
 This index only works with the following data types:
 - [`String`](/sql-reference/data-types/string.md)
 - [`FixedString`](/sql-reference/data-types/fixedstring.md)
+- [`IPv6`](/sql-reference/data-types/ipv6.md)
 - [`Map`](/sql-reference/data-types/map.md)
+
+The column type may also be wrapped in `Nullable`, `LowCardinality` or `Array`, including combinations such as:
+- `Nullable(String)`
+- `Nullable(FixedString)`
+- `LowCardinality(Nullable(String))`
+- `LowCardinality(Nullable(FixedString))`
+- `Array(Nullable(String))`
 
 To estimate the parameters of `ngrambf_v1`, you can use the following [User Defined Functions (UDFs)](/sql-reference/statements/create/function.md).
 

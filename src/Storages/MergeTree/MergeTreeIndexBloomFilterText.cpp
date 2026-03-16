@@ -834,8 +834,8 @@ void bloomFilterIndexTextValidator(const IndexDescription & index, bool /*attach
         WhichDataType data_type(type);
         if (!data_type.isString() && !data_type.isFixedString() && !data_type.isIPv6())
             throw Exception(ErrorCodes::BAD_ARGUMENTS,
-                "Ngram and token bloom filter indexes can only be used with column types `String`, `FixedString`, `LowCardinality(String)`, `LowCardinality(FixedString)`, "
-                "`Nullable(String)`, `Nullable(FixedString)`, `Array(String)` or `Array(FixedString)`");
+                "Ngram and token bloom filter indexes can only be used with `String`, `FixedString` or `IPv6` columns, optionally wrapped in `Nullable`, `LowCardinality` or `Array` "
+                "(for example `Nullable(String)`, `Nullable(FixedString)`, `LowCardinality(Nullable(String))`, `LowCardinality(Nullable(FixedString))`, `Array(Nullable(String))`)");
     }
 
     FieldVector args = getFieldsFromIndexArgumentsAST(index.arguments);
