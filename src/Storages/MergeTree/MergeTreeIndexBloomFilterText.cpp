@@ -8,6 +8,7 @@
 #include <Core/Defines.h>
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypeLowCardinality.h>
+#include <DataTypes/DataTypeNullable.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Interpreters/Set.h>
 #include <IO/ReadHelpers.h>
@@ -815,22 +816,21 @@ void bloomFilterIndexTextValidator(const IndexDescription & index, bool /*attach
 {
     for (const auto & index_data_type : index.data_types)
     {
-        WhichDataType data_type(index_data_type);
+        DataTypePtr type = index_data_type;
 
-        if (data_type.isArray())
-        {
-            const auto & array_type = assert_cast<const DataTypeArray &>(*index_data_type);
-            data_type = WhichDataType(array_type.getNestedType());
-        }
-        else if (data_type.isLowCardinality())
-        {
-            const auto & low_cardinality = assert_cast<const DataTypeLowCardinality &>(*index_data_type);
-            data_type = WhichDataType(low_cardinality.getDictionaryType());
-        }
+        if (const auto * array_type = typeid_cast<const DataTypeArray *>(type.get()))
+            type = array_type->getNestedType();
+        else if (const auto * lc_type = typeid_cast<const DataTypeLowCardinality *>(type.get()))
+            type = lc_type->getDictionaryType();
 
+        if (const auto * nullable_type = typeid_cast<const DataTypeNullable *>(type.get()))
+            type = nullable_type->getNestedType();
+
+        WhichDataType data_type(type);
         if (!data_type.isString() && !data_type.isFixedString() && !data_type.isIPv6())
             throw Exception(ErrorCodes::BAD_ARGUMENTS,
-                "Ngram and token bloom filter indexes can only be used with column types `String`, `FixedString`, `LowCardinality(String)`, `LowCardinality(FixedString)`, `Array(String)` or `Array(FixedString)`");
+                "Ngram and token bloom filter indexes can only be used with column types `String`, `FixedString`, `LowCardinality(String)`, `LowCardinality(FixedString)`, "
+                "`Nullable(String)`, `Nullable(FixedString)`, `Array(String)` or `Array(FixedString)`");
     }
 
     FieldVector args = getFieldsFromIndexArgumentsAST(index.arguments);
