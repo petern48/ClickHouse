@@ -108,7 +108,7 @@ SYSTEM START MERGES t_read_in_order_partitioned_final;
 DROP TABLE t_read_in_order_partitioned_final;
 
 -- Non-monotone partition key (PARTITION BY c1 % N) must not cause incorrect trimming.
--- Lexicographic partition ID order differs from sort key order,
+-- Lexicographic partition ID order differs from sort key order.
 DROP TABLE IF EXISTS t0;
 
 CREATE TABLE t0 (c1 Int) ENGINE = MergeTree() ORDER BY c1 PARTITION BY (c1 % 6451);
