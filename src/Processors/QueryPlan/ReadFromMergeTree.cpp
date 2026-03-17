@@ -1211,16 +1211,33 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
         const size_t limit = input_order_info->limit;
         const int direction = input_order_info->direction;
 
-        auto get_sort_key_mark = [](const DataPartPtr & part, bool last) -> std::optional<Field>
+        auto get_sort_key_mark = [](const RangesInDataPart & p, bool last) -> std::optional<Field>
         {
-            const auto index = part->getIndex();
-            if (!index || index->empty())
+            const auto index = p.data_part->getIndex();
+            if (!index || index->empty() || p.ranges.empty())
                 return std::nullopt;
             const auto & col = (*index)[0];
             if (col->empty())
                 return std::nullopt;
+
+            size_t mark_idx;
+            if (!last)
+            {
+                /// Lower bound: the primary index entry at the first selected granule.
+                mark_idx = p.ranges.front().begin;
+            }
+            else
+            {
+                /// Upper bound for selected ranges: the primary-index entry at `end` is the lower bound
+                /// of the first granule *after* the selection, so all selected values are < that entry.
+                /// If `end` reaches the last granule, there is no "next" entry, fall back to the last
+                /// entry, for best-effort (it's only a lower bound, so may prevent trimming).
+                const size_t end = p.ranges.back().end;
+                mark_idx = (end < col->size()) ? end : col->size() - 1;
+            }
+
             Field f;
-            col->get(last ? col->size() - 1 : 0, f);
+            col->get(mark_idx, f);
             return f.isNull() ? std::nullopt : std::make_optional(std::move(f));
         };
 
@@ -1233,13 +1250,13 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
             std::optional<Field> prev_last;
             for (const auto & p : parts_with_ranges)
             {
-                auto first = get_sort_key_mark(p.data_part, false);
+                auto first = get_sort_key_mark(p, false);
                 if (first && prev_last && accurateLess(*first, *prev_last))
                 {
                     sort_key_globally_monotone = false;
                     break;
                 }
-                if (auto last = get_sort_key_mark(p.data_part, true))
+                if (auto last = get_sort_key_mark(p, true))
                     prev_last = std::move(last);
             }
         }
@@ -1255,7 +1272,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
                 for (size_t i = 0; i < parts_with_ranges.size(); ++i)
                 {
                     cumulative_rows += parts_with_ranges[i].getRowsCount();
-                    if (auto last_mark = get_sort_key_mark(parts_with_ranges[i].data_part, true))
+                    if (auto last_mark = get_sort_key_mark(parts_with_ranges[i], true))
                     {
                         if (!max_last_mark.has_value() || accurateLess(*max_last_mark, *last_mark))
                             max_last_mark = std::move(last_mark);
@@ -1268,7 +1285,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
                         const auto & next_pid = parts_with_ranges[i + 1].data_part->info.getPartitionId();
                         if (curr_pid != next_pid)
                         {
-                            auto next_first = get_sort_key_mark(parts_with_ranges[i + 1].data_part, false);
+                            auto next_first = get_sort_key_mark(parts_with_ranges[i + 1], false);
                             if (next_first.has_value() && accurateLess(*max_last_mark, *next_first))
                             {
                                 parts_with_ranges.erase(
@@ -1292,7 +1309,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
                 {
                     const size_t idx = i - 1;
                     cumulative_rows += parts_with_ranges[idx].getRowsCount();
-                    if (auto first_mark = get_sort_key_mark(parts_with_ranges[idx].data_part, false))
+                    if (auto first_mark = get_sort_key_mark(parts_with_ranges[idx], false))
                     {
                         if (!min_first_mark.has_value() || accurateLess(*first_mark, *min_first_mark))
                             min_first_mark = std::move(first_mark);
@@ -1304,7 +1321,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
                         const auto & prev_pid = parts_with_ranges[idx - 1].data_part->info.getPartitionId();
                         if (curr_pid != prev_pid)
                         {
-                            auto prev_last = get_sort_key_mark(parts_with_ranges[idx - 1].data_part, true);
+                            auto prev_last = get_sort_key_mark(parts_with_ranges[idx - 1], true);
                             if (prev_last.has_value() && accurateLess(*prev_last, *min_first_mark))
                             {
                                 parts_with_ranges.erase(
