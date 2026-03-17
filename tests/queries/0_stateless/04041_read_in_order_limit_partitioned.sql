@@ -107,6 +107,51 @@ SETTINGS optimize_read_in_order = 1, max_threads = 2;
 SYSTEM START MERGES t_read_in_order_partitioned_final;
 DROP TABLE t_read_in_order_partitioned_final;
 
+-- Test is_deleted
+DROP TABLE IF EXISTS t_read_in_order_partitioned_deleted;
+
+CREATE TABLE t_read_in_order_partitioned_deleted
+(
+    dt DateTime,
+    id UInt32,
+    ver UInt8,
+    is_deleted UInt8
+)
+ENGINE = ReplacingMergeTree(ver, is_deleted)
+PARTITION BY toYYYYMM(dt)
+ORDER BY dt;
+
+SYSTEM STOP MERGES t_read_in_order_partitioned_deleted;
+
+INSERT INTO t_read_in_order_partitioned_deleted
+SELECT toDateTime('2024-01-01 00:00:00') + number * 60 AS dt,
+       number AS id,
+       toUInt8(1) AS ver,
+       toUInt8(1) AS is_deleted  -- deleted rows
+FROM numbers(2000);
+
+INSERT INTO t_read_in_order_partitioned_deleted
+SELECT toDateTime('2024-02-01 00:00:00') + number * 60 AS dt,
+       number AS id,
+       toUInt8(2) AS ver,
+       toUInt8(0) AS is_deleted  -- live rows
+FROM numbers(2000);
+
+SELECT id
+FROM t_read_in_order_partitioned_deleted
+ORDER BY dt ASC
+LIMIT 5
+SETTINGS optimize_read_in_order = 0, max_threads = 2;
+
+SELECT id
+FROM t_read_in_order_partitioned_deleted
+ORDER BY dt ASC
+LIMIT 5
+SETTINGS optimize_read_in_order = 1, max_threads = 2;
+
+SYSTEM START MERGES t_read_in_order_partitioned_deleted;
+DROP TABLE t_read_in_order_partitioned_deleted;
+
 -- Non-monotone partition key (PARTITION BY c1 % N) must not cause incorrect trimming.
 -- Lexicographic partition ID order differs from sort key order.
 DROP TABLE IF EXISTS t0;

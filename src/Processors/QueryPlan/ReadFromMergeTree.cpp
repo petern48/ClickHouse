@@ -1206,6 +1206,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
         && !query_info.row_level_filter
         && !query_info.filter_actions_dag
         && !query_info.isFinal()
+        && data.merging_params.is_deleted_column.empty()
         && !has_reverse_sort_key)
     {
         const size_t limit = input_order_info->limit;
