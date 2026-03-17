@@ -56,6 +56,14 @@ ORDER BY dt ASC
 LIMIT 1
 SETTINGS optimize_read_in_order = 1, max_threads = 2;
 
+-- A key-range WHERE predicate causes PK pruning to select only a subset of granules inside
+-- the first partition's parts (partial ranges)
+SELECT val
+FROM t_read_in_order_partitioned
+WHERE dt >= toDateTime('2024-01-01 00:35:00')
+ORDER BY dt ASC
+LIMIT 5
+SETTINGS optimize_read_in_order = 1, max_threads = 2;
 
 SYSTEM START MERGES t_read_in_order_partitioned;
 DROP TABLE t_read_in_order_partitioned;
