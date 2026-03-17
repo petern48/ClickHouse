@@ -98,3 +98,12 @@ SETTINGS optimize_read_in_order = 1, max_threads = 2;
 
 SYSTEM START MERGES t_read_in_order_partitioned_final;
 DROP TABLE t_read_in_order_partitioned_final;
+
+-- Non-monotone partition key (PARTITION BY c1 % N) must not cause incorrect trimming.
+-- Lexicographic partition ID order differs from sort key order,
+
+CREATE TABLE t0 (c1 Int) ENGINE = MergeTree() ORDER BY c1 PARTITION BY (c1 % 6451);
+SET min_insert_block_size_rows = 64, optimize_trivial_insert_select = 1;
+INSERT INTO TABLE t0 (c1) SELECT number FROM numbers(500);
+
+SELECT * FROM t0 ORDER BY c1 LIMIT 10;
