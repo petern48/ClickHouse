@@ -101,9 +101,14 @@ DROP TABLE t_read_in_order_partitioned_final;
 
 -- Non-monotone partition key (PARTITION BY c1 % N) must not cause incorrect trimming.
 -- Lexicographic partition ID order differs from sort key order,
+DROP TABLE IF EXISTS t0;
 
 CREATE TABLE t0 (c1 Int) ENGINE = MergeTree() ORDER BY c1 PARTITION BY (c1 % 6451);
 SET min_insert_block_size_rows = 64, optimize_trivial_insert_select = 1;
+
+SYSTEM STOP MERGES t0;
 INSERT INTO TABLE t0 (c1) SELECT number FROM numbers(500);
 
 SELECT * FROM t0 ORDER BY c1 LIMIT 10;
+SYSTEM START MERGES t0;
+DROP TABLE t0;
