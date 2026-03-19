@@ -1275,11 +1275,11 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
                         auto next_first = get_sort_key_mark(parts_with_ranges[i + 1], false);
                         if (curr_last && next_first && accurateLess(*curr_last, *next_first))
                         {
-                            parts_with_ranges.erase(
-                                parts_with_ranges.begin() + static_cast<ptrdiff_t>(i + 1),
-                                parts_with_ranges.end());
-                            LOG_TRACE(log, "Trimmed to {} part(s) for ascending ORDER BY LIMIT {}",
-                                parts_with_ranges.size(), limit);
+                            // parts_with_ranges.erase(
+                            //     parts_with_ranges.begin() + static_cast<ptrdiff_t>(i + 1),
+                            //     parts_with_ranges.end());
+                            // LOG_TRACE(log, "Trimmed to {} part(s) for ascending ORDER BY LIMIT {}",
+                            //     parts_with_ranges.size(), limit);
                             break;
                         }
                     }
@@ -1303,11 +1303,11 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
                         auto prev_part_last  = get_sort_key_mark(parts_with_ranges[i - 1], true);
                         if (curr_first && prev_part_last && accurateLess(*prev_part_last, *curr_first))
                         {
-                            parts_with_ranges.erase(
-                                parts_with_ranges.begin(),
-                                parts_with_ranges.begin() + static_cast<ptrdiff_t>(i));
-                            LOG_TRACE(log, "Trimmed to {} part(s) for descending ORDER BY LIMIT {}",
-                                parts_with_ranges.size(), limit);
+                            // parts_with_ranges.erase(
+                            //     parts_with_ranges.begin(),
+                            //     parts_with_ranges.begin() + static_cast<ptrdiff_t>(i));
+                            // LOG_TRACE(log, "Trimmed to {} part(s) for descending ORDER BY LIMIT {}",
+                            //     parts_with_ranges.size(), limit);
                             break;
                         }
                     }
