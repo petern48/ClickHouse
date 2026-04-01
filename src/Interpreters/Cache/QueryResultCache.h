@@ -166,6 +166,14 @@ public:
     /// Record new execution of query represented by key. Returns number of executions so far.
     size_t recordQueryRun(const Key & key);
 
+    /// Thundering herd prevention: register this thread as the executor for the given cache key.
+    /// See CacheBase::startAsyncInsert for semantics.
+    bool startAsyncInsert(const Key & key, std::chrono::milliseconds timeout) { return cache.startAsyncInsert(key, timeout); }
+
+    /// Signal threads waiting in startAsyncInsert() that computation is done.
+    /// See CacheBase::finishAsyncInsert for semantics.
+    void finishAsyncInsert(const Key & key) { cache.finishAsyncInsert(key); }
+
     /// For debugging and system tables
     std::vector<QueryResultCache::Cache::KeyMapped> dump() const;
 
